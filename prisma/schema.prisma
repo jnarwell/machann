@@ -1,0 +1,476 @@
+// Machann Enfomasyon Database Schema
+// Federated User-Generated Data Layer
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// USER MODEL
+// ============================================
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String?   @unique
+  emailVerified DateTime?
+  password      String?   // Hashed password for credentials auth
+  phone         String?   @unique
+  location      String?
+  avatarColor   String    @default("#6B7C5E")
+  initials      String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  trades          Trade[]
+  solMemberships  SolMember[]
+  messages        Message[]
+  suppliers       Supplier[]
+  priceReports    PriceReport[]
+  consent         UserConsent?
+  healthSnapshots BusinessHealthSnapshot[]
+  accounts        Account[]
+  sessions        Session[]
+}
+
+// ============================================
+// NEXTAUTH MODELS
+// ============================================
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
+// TRADE TRACKING (ENHANCED)
+// ============================================
+model Trade {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  commodityId   String
+  qty           Float
+  unit          String
+  supplierId    String?
+  marketBought  String
+  pricePaid     Float
+  marketSold    String
+  priceReceived Float
+  margin        Float
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Transport and context fields (Feature 1)
+  transportCostHtg  Float?
+  transportMode     String?   // tap-tap, moto, kamyon, pye, bato
+  roadCondition     String?   // bon, pasab, move, bloke
+  weatherCondition  String?   // soley, lapli, inondasyon, van_fo
+
+  // Relations
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+
+  // Link to price contribution (if user consents to share)
+  priceContribution PriceContribution?
+
+  @@index([userId])
+  @@index([date])
+  @@index([commodityId, date])
+  @@index([marketBought])
+  @@index([marketSold])
+}
+
+// ============================================
+// PRICE REPORT (Lightweight observations)
+// ============================================
+model PriceReport {
+  id          String   @id @default(cuid())
+  commodityId String
+  market      String
+  regionId    String
+  price       Float
+  unit        String   @default("kg")
+  quality     String?  // excellent, good, fair, poor
+  observedAt  DateTime @default(now())
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  // Relations
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Link to price contribution if shared
+  priceContribution PriceContribution?
+
+  @@index([userId])
+  @@index([commodityId, observedAt])
+  @@index([regionId, observedAt])
+  @@index([market])
+}
+
+// ============================================
+// USER CONSENT (Privacy & Data Sharing)
+// ============================================
+model UserConsent {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Tiered consent levels
+  shareWithGroup   Boolean @default(false)
+  shareWithRegion  Boolean @default(false)
+  shareWithNetwork Boolean @default(false)
+
+  // Privacy options
+  anonymizeData Boolean @default(true)
+  shareMargin   Boolean @default(false)
+  shareRoutes   Boolean @default(false)
+
+  // Tracking
+  consentVersion Int      @default(1)
+  lastUpdated    DateTime @updatedAt
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ============================================
+// PRICE CONTRIBUTION (Bridge for aggregation)
+// ============================================
+model PriceContribution {
+  id          String   @id @default(cuid())
+  commodityId String
+  price       Float
+  unit        String
+  market      String
+  regionId    String
+  observedAt  DateTime
+
+  // Source linkage (one of these will be set)
+  tradeId       String?      @unique
+  trade         Trade?       @relation(fields: [tradeId], references: [id])
+  priceReportId String?      @unique
+  priceReport   PriceReport? @relation(fields: [priceReportId], references: [id])
+
+  // Contribution metadata
+  userId       String
+  isAnonymized Boolean @default(true)
+  consentTier  String  // group, regional, national
+
+  // Aggregation tracking
+  includedInGroupSignal    Boolean @default(false)
+  includedInRegionalSignal Boolean @default(false)
+  includedInNationalSignal Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([commodityId, observedAt])
+  @@index([regionId, observedAt])
+  @@index([market])
+  @@index([userId])
+}
+
+// ============================================
+// GROUP PRICE SIGNAL (Tier 1 - Sòl Group)
+// ============================================
+model GroupPriceSignal {
+  id         String   @id @default(cuid())
+  solGroupId String
+  solGroup   SolGroup @relation(fields: [solGroupId], references: [id], onDelete: Cascade)
+
+  commodityId String
+  market      String?
+  regionId    String
+
+  // Aggregated values
+  avgPrice      Float
+  minPrice      Float
+  maxPrice      Float
+  medianPrice   Float?
+  stdDeviation  Float?
+
+  // Observation metadata
+  observationCount Int
+  minObservations  Int @default(3)
+
+  // Time window
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Sharing control
+  shareConsent    Boolean @default(false)
+  shareWithRegion Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([solGroupId, commodityId, market, periodStart])
+  @@index([commodityId, periodStart])
+  @@index([regionId, periodStart])
+}
+
+// ============================================
+// REGIONAL PRICE SIGNAL (Tier 2 - Cross-Group)
+// ============================================
+model RegionalPriceSignal {
+  id          String @id @default(cuid())
+  regionId    String
+  commodityId String
+
+  // Aggregated values
+  avgPrice     Float
+  minPrice     Float
+  maxPrice     Float
+  medianPrice  Float?
+  stdDeviation Float?
+
+  // Source metadata
+  groupCount       Int
+  observationCount Int
+  minGroups        Int    @default(2)
+
+  // Confidence scoring
+  confidenceScore Float?
+
+  // Time window
+  periodStart DateTime
+  periodEnd   DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([regionId, commodityId, periodStart])
+  @@index([commodityId, periodStart])
+  @@index([regionId, periodStart])
+}
+
+// ============================================
+// NATIONAL PRICE SIGNAL (Tier 3 - Network-Wide)
+// ============================================
+model NationalPriceSignal {
+  id          String @id @default(cuid())
+  commodityId String
+
+  // Aggregated values
+  avgPrice     Float
+  minPrice     Float
+  maxPrice     Float
+  medianPrice  Float?
+  stdDeviation Float?
+
+  // Regional breakdown (JSON string)
+  regionalPrices String
+
+  // Source metadata
+  regionCount      Int
+  groupCount       Int
+  observationCount Int
+
+  // Confidence scoring
+  confidenceScore Float?
+  dataQuality     String? // high, medium, low, insufficient
+
+  // Time window
+  periodStart DateTime
+  periodEnd   DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([commodityId, periodStart])
+  @@index([commodityId, periodStart])
+}
+
+// ============================================
+// BUSINESS HEALTH SNAPSHOT
+// ============================================
+model BusinessHealthSnapshot {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Period
+  periodStart DateTime
+  periodEnd   DateTime
+  periodType  String   @default("monthly") // weekly, monthly, quarterly
+
+  // Financial metrics
+  totalRevenue       Float
+  totalCost          Float
+  totalTransportCost Float?
+  netProfit          Float
+
+  // Performance metrics
+  avgMargin   Float
+  tradeCount  Int
+  totalVolume Float?
+
+  // Top performers (JSON strings)
+  topCommodities String
+  topRoutes      String
+  topSuppliers   String?
+
+  // Trend indicators
+  profitTrend String? // up, down, stable
+  volumeTrend String?
+  marginTrend String?
+
+  // Comparison to group/region (if consent given)
+  groupRank       Int?
+  regionAvgMargin Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, periodStart, periodType])
+  @@index([userId, periodStart])
+}
+
+// ============================================
+// SOL (ROTATING SAVINGS GROUP)
+// ============================================
+model SolGroup {
+  id                    String   @id @default(cuid())
+  groupName             String
+  currentCycle          Int      @default(1)
+  totalCycles           Int
+  poolPerCycle          Float
+  contributionPerMember Float
+  currentRecipientIndex Int      @default(0)
+  nextCycleDate         DateTime
+  status                String   @default("active")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Group-level data sharing settings (Feature 2)
+  shareGroupPrices Boolean @default(false)
+  regionId         String?
+
+  // Relations
+  members      SolMember[]
+  messages     Message[]
+  priceSignals GroupPriceSignal[]
+}
+
+model SolMember {
+  id         String   @id @default(cuid())
+  status     String   @default("upcoming")
+  paidAmount Float    @default(0)
+  cycleOrder Int
+  joinedAt   DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  solGroupId String
+  solGroup   SolGroup @relation(fields: [solGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, solGroupId])
+  @@index([solGroupId])
+}
+
+// ============================================
+// GROUP MESSAGES
+// ============================================
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  timestamp DateTime @default(now())
+
+  // Relations
+  senderId   String
+  sender     User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  solGroupId String
+  solGroup   SolGroup @relation(fields: [solGroupId], references: [id], onDelete: Cascade)
+
+  @@index([solGroupId])
+  @@index([timestamp])
+}
+
+// ============================================
+// SUPPLIER DIRECTORY
+// ============================================
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  phone       String?
+  location    String
+  commodities String
+  rating      Float    @default(0)
+  reviewCount Int      @default(0)
+  notes       String?
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  addedById String?
+  addedBy   User?   @relation(fields: [addedById], references: [id])
+  trades    Trade[]
+
+  @@index([location])
+}
+
+// ============================================
+// PRICE HISTORY CACHE (Enhanced for dual layer)
+// ============================================
+model PriceRecord {
+  id          String @id @default(cuid())
+  commodityId String
+  price       Float
+  region      String
+  market      String?
+
+  // Source identification (Feature 3)
+  source    String @default("fewsnet") // fewsnet, worldbank, wfp, user_generated, blended
+  sourceUrl String?
+
+  // User-generated metadata
+  contributorCount Int?
+  confidenceScore  Float?
+
+  recordDate DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([commodityId, recordDate])
+  @@index([region])
+  @@index([source, recordDate])
+}
