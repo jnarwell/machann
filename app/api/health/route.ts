@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 
+export const dynamic = 'force-dynamic';
+
 // Default user ID for demo (in production, this would come from auth)
 const DEMO_USER_ID = "demo-user-1";
 

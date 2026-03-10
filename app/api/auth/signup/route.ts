@@ -4,6 +4,8 @@ import prisma from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 import { safeValidate, validationErrorResponse } from "@/lib/validation";
 
+export const dynamic = 'force-dynamic';
+
 // Signup validation schema
 const signupSchema = z.object({
   name: z

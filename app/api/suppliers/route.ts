@@ -7,6 +7,8 @@ import {
   validationErrorResponse,
 } from "@/lib/validation";
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/suppliers - List all suppliers
 export async function GET(request: NextRequest) {
   try {

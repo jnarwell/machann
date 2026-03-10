@@ -8,6 +8,8 @@ import {
   validationErrorResponse,
 } from "@/lib/validation";
 
+export const dynamic = 'force-dynamic';
+
 // Default user ID for demo (in production, this would come from auth)
 const DEMO_USER_ID = "demo-user-1";
 

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { auth } from "@/lib/auth";
 
+export const dynamic = 'force-dynamic';
+
 // Default IDs for demo (fallback when not logged in)
 const DEMO_SOL_GROUP_ID = "demo-sol-group-1";
 

@@ -7,6 +7,8 @@ import {
   validationErrorResponse,
 } from "@/lib/validation";
 
+export const dynamic = 'force-dynamic';
+
 // Default IDs for demo
 const DEMO_USER_ID = "demo-user-1";
 const DEMO_SOL_GROUP_ID = "demo-sol-group-1";
